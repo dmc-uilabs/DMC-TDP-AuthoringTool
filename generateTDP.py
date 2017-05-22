@@ -77,5 +77,5 @@ if __name__ == '__main__':
     
     xml = generate_xml(metadata, geometry, part_id)
     outfile = open('out.txt', 'w')
-    outfile.write(xml)
+    outfile.write("TDP_xml=" + xml)
     outfile.close()
