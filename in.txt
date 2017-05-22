@@ -1,0 +1,3 @@
+filename=filename
+material=materialA
+coatings=coatingB
