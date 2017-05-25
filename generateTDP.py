@@ -193,8 +193,13 @@ def get_dome_inputs():
 
     for line in lines:
         kv = line.rstrip().split("=")
+<<<<<<< HEAD
         key = kv.pop(0).strip()
         value = "=".join(kv).strip()
+=======
+        key = kv[0].strip()
+        value = kv[1].strip()
+>>>>>>> bb42eadc3631393be649e08b097a84420d0e1d56
         inputs[key] = value
         
     return inputs
