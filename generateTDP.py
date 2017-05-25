@@ -1,13 +1,21 @@
 #!/usr/bin/python
 # coding: utf-8
 
+# TODO: add functionality for multi-part assemblies
+# TODO: fault tolerance!
+
 import uuid
 import re
 import time
 import sys
 import zipfile
+import os
+import urllib
+import json
 import aocxchange.step
 import xml.etree.cElementTree as ET
+from boto.s3.connection import S3Connection
+from boto.s3.key import Key
 from PyQt5 import QtWidgets
 from PIL import Image
 from OCC.Bnd import Bnd_Box
@@ -191,6 +199,33 @@ def get_dome_inputs():
         
     return inputs
     
+def download_stp_file(url, filename):
+    urllib.urlretrieve(url, filename)
+    print "Stp File Downloaded"
+    
+def upload_zip(zipfile):
+    timestamp = int(time.time())
+
+    with open('aws.json') as json_data:
+        aws = json.load(json_data)
+        access_key = aws['accessKeyId']
+        secret_key = aws['secretAccessKey']
+        
+    conn = S3Connection(access_key, secret_key)
+    bucket = conn.get_bucket('psubucket01')
+
+    k = Key(bucket)
+    k.key = zipfile
+    k.set_contents_from_filename('./'+zipfile)
+
+    return conn.generate_url(
+        expires_in=long(1209600),
+        method='GET',
+        bucket='psubucket01',
+        key=k.key,
+        query_auth=True,
+    )
+
 def get_metadata(filename, material, coatings):
     header = stp_header_parser()
     header = header.stp_header_parser(stp_filename=filename)
@@ -214,8 +249,11 @@ def get_geometry(shape, material, unit="units"):
     surface_area = gprop.surface().Mass()
     
     return {'length': length, 'height': height, 'width': width, 'volume': volume, 'mass': mass, 'surface_area': surface_area}
+   
+def generate_xml(metadata, geometry):
+    part_id = str(uuid.uuid4())
+    instance_id = str(uuid.uuid4())
     
-def generate_xml(metadata, geometry, part_id):
     mBOM = ET.Element("mBOM", version="2.0")
     parts = ET.SubElement(mBOM, "parts")
     part = ET.SubElement(parts, "part", id=part_id)
@@ -226,9 +264,12 @@ def generate_xml(metadata, geometry, part_id):
     ET.SubElement(part, "surface_area", unit=metadata["unit"]+"2").text = str(geometry["surface_area"])
     ET.SubElement(part, "volume", unit=metadata["unit"]+"3").text = str(geometry["volume"])
     ET.SubElement(part, "weight", unit="kg").text = str(geometry["mass"])
+    instances = ET.SubElement(part, "instances")
+    ET.SubElement(instances, "instance", instance_id=instance_id)
     manufacturingDetails = ET.SubElement(part, "manufacturingDetails")
     ET.SubElement(manufacturingDetails, "material").text = metadata["material"]
     ET.SubElement(manufacturingDetails, "coatings").text = metadata["coatings"]
+    assemblies = ET.SubElement(mBOM, "assemblies")
     
     return mBOM
 
@@ -283,23 +324,26 @@ def generate_zip(xml, filename, snapshots):
 
 if __name__ == '__main__':
     inputs = get_dome_inputs()
-    filename = inputs["filename"]
-    filename = '23059898_C_x_t.stp'
+    inputFile = inputs["inputFile"]
     material = inputs["material"]
     coatings = inputs["coatings"]
-    part_id = str(uuid.uuid4())
+    
+    filename = "inputFile.stp"
+    download_stp_file(inputFile, filename)
     
     metadata = get_metadata(filename, material, coatings)
     
     shape = import_step(filename)
     geometry = get_geometry(shape, material, metadata["unit"])
     
-    xml = generate_xml(metadata, geometry, part_id)
+    xml = generate_xml(metadata, geometry)
     
     snapshots = generate_snapshots(shape)
     
     zip_filename = generate_zip(xml, filename, snapshots)
     
+    zip_url = upload_zip(zip_filename)
+    
     outfile = open('out.txt', 'w')
-    outfile.write("TDP_xml=" + zip_filename)
+    outfile.write("fileOutput=" + zip_url)
     outfile.close()
