@@ -2,7 +2,7 @@
 # coding: utf-8
 
 # TODO: add functionality for multi-part assemblies
-# TODO: fault tolerance!
+# TODO: customUI; inputTemplate, outputTemplate
 
 import uuid
 import re
@@ -30,6 +30,7 @@ TOLERANCE = 1e-6
 
 # Unit: kg/m^3
 DENSITIES = {
+    "": 1,
     "Steel": 8000,
     "Aluminum": 2700
 }
@@ -42,6 +43,12 @@ UNIT_FACTOR = {
 }
 
 VIEWS = ["front", "rear", "top", "bottom", "left", "right", "iso"]
+
+def exit_app(outtext, status_code=0):
+    outfile = open('out.txt', 'w')
+    outfile.write("outputFile=" + outtext)
+    outfile.close()
+    sys.exit(0)
 
 class GpropsFromShape(object):
     def __init__(self, shape, tolerance=1e-5):
@@ -198,152 +205,217 @@ def get_dome_inputs():
         inputs[key] = value
         
     return inputs
+
+def validate_inputs(inputFile, material, coatings):
+    assert(inputFile)
+    assert(material in DENSITIES)
+    assert(coatings)
+        
+def get_tdp_inputs():
+    print "Getting TDP inputs..."
     
+    try:
+        inputs = get_dome_inputs()
+        inputFile = inputs["inputFile"]
+        material = inputs["material"]
+        coatings = inputs["coatings"]
+    except:
+        exit_app("Error parsing inputs.", status_code=1)
+        sys.exit()
+    
+    try:
+        validate_inputs(inputFile, material, coatings)
+    except:
+        exit_app("One or more of the inputs is not valid.", status_code=1)
+        sys.exit()
+    
+    return inputFile, material, coatings
+
 def download_stp_file(url, filename):
-    urllib.urlretrieve(url, filename)
-    print "Stp File Downloaded"
+    print "Downloading STP file..."
+    try:
+        urllib.urlretrieve(url, filename)
+    except:
+        exit_app("Unable to download STP file.", status_code=1)
     
 def upload_zip(zipfile):
-    timestamp = int(time.time())
+    print "Uploading zipfile..."
+    
+    try:
+        timestamp = int(time.time())
 
-    with open('aws.json') as json_data:
-        aws = json.load(json_data)
-        access_key = aws['accessKeyId']
-        secret_key = aws['secretAccessKey']
-        
-    conn = S3Connection(access_key, secret_key)
-    bucket = conn.get_bucket('psubucket01')
+        with open('aws.json') as json_data:
+            aws = json.load(json_data)
+            access_key = aws['accessKeyId']
+            secret_key = aws['secretAccessKey']
+            
+        conn = S3Connection(access_key, secret_key)
+        bucket = conn.get_bucket('psubucket01')
 
-    k = Key(bucket)
-    k.key = zipfile
-    k.set_contents_from_filename('./'+zipfile)
+        k = Key(bucket)
+        k.key = zipfile
+        k.set_contents_from_filename('./'+zipfile)
 
-    return conn.generate_url(
-        expires_in=long(1209600),
-        method='GET',
-        bucket='psubucket01',
-        key=k.key,
-        query_auth=True,
-    )
+        return conn.generate_url(
+            expires_in=long(1209600),
+            method='GET',
+            bucket='psubucket01',
+            key=k.key,
+            query_auth=True,
+        )
+    except:
+        exit_app("Error uploading zipfile.", status_code=1)
 
 def get_metadata(filename, material, coatings):
-    header = stp_header_parser()
-    header = header.stp_header_parser(stp_filename=filename)
+    print "Gathering metatdata from STP file..."
     
-    return {'name': header[3][1], 'material': material, 'coatings': coatings, 'unit': header[11][1]}
+    try:
+        header = stp_header_parser()
+        header = header.stp_header_parser(stp_filename=filename)
+        metadata = {'name': header[3][1], 'material': material, 'coatings': coatings, 'unit': header[11][1]}
+    except:
+        exit_app("Error gathering metadata from STP file.", status_code=1)
+    
+    return metadata
     
 def import_step(filename):
-    my_importer = aocxchange.step.StepImporter(filename)
+    print "Importing shapes from STP file..."
+    
+    try:
+        my_importer = aocxchange.step.StepImporter(filename)
+        assert(len(my_importer.shapes))
+        print str(len(my_importer.shapes)) + " shapes loaded..."
+    except:
+        sys.exit_app("Error importing shapes from STP file.", status_code=1)
+        
     return my_importer.shapes[0]
     
 def get_geometry(shape, material, unit="units"):
-    boundingbox_points = get_boundingbox(shape)
-    length = boundingbox_points[3] - boundingbox_points[0]
-    height = boundingbox_points[5] - boundingbox_points[2]
-    width = boundingbox_points[4] - boundingbox_points[1]
+    print "Calculating geometry..."
     
-    gprop = GpropsFromShape(shape)
-    volume = gprop.volume().Mass()
-    density = DENSITIES[material]
-    mass = volume*density*pow(UNIT_FACTOR[unit], 3)
-    surface_area = gprop.surface().Mass()
+    try:
+        boundingbox_points = get_boundingbox(shape)
+        length = boundingbox_points[3] - boundingbox_points[0]
+        height = boundingbox_points[5] - boundingbox_points[2]
+        width = boundingbox_points[4] - boundingbox_points[1]
+    
+        gprop = GpropsFromShape(shape)
+        volume = gprop.volume().Mass()
+        density = DENSITIES[material]
+        mass = volume*density*pow(UNIT_FACTOR[unit], 3)
+        surface_area = gprop.surface().Mass()
+    except:
+        exit_app("Error calculating geometry.", status_code=1)
     
     return {'length': length, 'height': height, 'width': width, 'volume': volume, 'mass': mass, 'surface_area': surface_area}
    
 def generate_xml(metadata, geometry):
-    part_id = str(uuid.uuid4())
-    instance_id = str(uuid.uuid4())
+    print "Generating xml..."
     
-    mBOM = ET.Element("mBOM", version="2.0")
-    parts = ET.SubElement(mBOM, "parts")
-    part = ET.SubElement(parts, "part", id=part_id)
-    ET.SubElement(part, "name").text = metadata["name"]
-    ET.SubElement(part, "length", unit=metadata["unit"]).text = str(geometry["length"])
-    ET.SubElement(part, "height", unit=metadata["unit"]).text = str(geometry["height"])
-    ET.SubElement(part, "width", unit=metadata["unit"]).text = str(geometry["width"])
-    ET.SubElement(part, "surface_area", unit=metadata["unit"]+"2").text = str(geometry["surface_area"])
-    ET.SubElement(part, "volume", unit=metadata["unit"]+"3").text = str(geometry["volume"])
-    ET.SubElement(part, "weight", unit="kg").text = str(geometry["mass"])
-    instances = ET.SubElement(part, "instances")
-    ET.SubElement(instances, "instance", instance_id=instance_id)
-    manufacturingDetails = ET.SubElement(part, "manufacturingDetails")
-    ET.SubElement(manufacturingDetails, "material").text = metadata["material"]
-    ET.SubElement(manufacturingDetails, "coatings").text = metadata["coatings"]
-    assemblies = ET.SubElement(mBOM, "assemblies")
-    
+    try:
+        part_id = str(uuid.uuid4())
+        instance_id = str(uuid.uuid4())
+        
+        mBOM = ET.Element("mBOM", version="2.0")
+        parts = ET.SubElement(mBOM, "parts")
+        part = ET.SubElement(parts, "part", id=part_id)
+        ET.SubElement(part, "name").text = metadata["name"]
+        ET.SubElement(part, "length", unit=metadata["unit"]).text = str(geometry["length"])
+        ET.SubElement(part, "height", unit=metadata["unit"]).text = str(geometry["height"])
+        ET.SubElement(part, "width", unit=metadata["unit"]).text = str(geometry["width"])
+        ET.SubElement(part, "surface_area", unit=metadata["unit"]+"2").text = str(geometry["surface_area"])
+        ET.SubElement(part, "volume", unit=metadata["unit"]+"3").text = str(geometry["volume"])
+        ET.SubElement(part, "weight", unit="kg").text = str(geometry["mass"])
+        instances = ET.SubElement(part, "instances")
+        ET.SubElement(instances, "instance", instance_id=instance_id)
+        manufacturingDetails = ET.SubElement(part, "manufacturingDetails")
+        ET.SubElement(manufacturingDetails, "material").text = metadata["material"]
+        ET.SubElement(manufacturingDetails, "coatings").text = metadata["coatings"]
+        assemblies = ET.SubElement(mBOM, "assemblies")
+    except:
+        exit_app("Error generating xml.", status_code=1)
+        
     return mBOM
 
 def generate_snapshots(shape):
-    app = QtWidgets.QApplication(sys.argv)
-    widget = QtWidgets.QWidget()
-    widget.resize(1000,1000)
-    view = Viewer3d(int(widget.winId()))
-    view.Create()
-    view.SetModeShaded()
-    view.DisplayShape(shape, update=True)
+    print "Generating snapshots..."
     
-    VIEW_FUNC = {
-        "front": view.View_Front,
-        "rear": view.View_Rear,
-        "top": view.View_Top,
-        "bottom": view.View_Bottom,
-        "left": view.View_Left,
-        "right": view.View_Right,
-        "iso": view.View_Iso
-    }
-    
-    snapshots = []
-    
-    for view_type in VIEWS:
-        VIEW_FUNC[view_type]()
-        view.ExportToImage('capture.ppm')
-        im = Image.open('capture.ppm')
-        snapshot = view_type + '_capture.png'
-        im.save(snapshot)
-        snapshots.append(snapshot)
-    
+    try:
+        app = QtWidgets.QApplication(sys.argv)
+        widget = QtWidgets.QWidget()
+        widget.resize(1000,1000)
+        view = Viewer3d(int(widget.winId()))
+        view.Create()
+        view.SetModeShaded()
+        view.DisplayShape(shape, update=True)
+        
+        VIEW_FUNC = {
+            "front": view.View_Front,
+            "rear": view.View_Rear,
+            "top": view.View_Top,
+            "bottom": view.View_Bottom,
+            "left": view.View_Left,
+            "right": view.View_Right,
+            "iso": view.View_Iso
+        }
+        
+        snapshots = []
+        
+        for view_type in VIEWS:
+            VIEW_FUNC[view_type]()
+            view.ExportToImage('capture.ppm')
+            im = Image.open('capture.ppm')
+            snapshot = view_type + '_capture.png'
+            im.save(snapshot)
+            snapshots.append(snapshot)
+    except:
+        exit_app("Error generating snapshots.", status_code=1)
+        
     return snapshots
 
 def generate_zip(xml, filename, snapshots):
-    file_id = int(time.time())
-    zip_filename = 'TDP_' + str(file_id) + '.zip'
+    print "Generating zipfile..."
     
-    tree = ET.ElementTree(xml)
-    xml_file = "TDP_" + str(file_id) + ".xml"
-    tree.write(xml_file)
-    
-    with zipfile.ZipFile(zip_filename, 'w') as myzip:
-        myzip.write(filename)
-        myzip.write(xml_file)
-        for snapshot in snapshots:
-            myzip.write(snapshot)
+    try:
+        file_id = int(time.time())
+        zip_filename = 'TDP_' + str(file_id) + '.zip'
         
-    myzip.close()
-    
+        tree = ET.ElementTree(xml)
+        xml_file = "TDP_" + str(file_id) + ".xml"
+        tree.write(xml_file)
+        
+        with zipfile.ZipFile(zip_filename, 'w') as myzip:
+            myzip.write(filename)
+            myzip.write(xml_file)
+            for snapshot in snapshots:
+                myzip.write(snapshot)
+            
+        myzip.close()
+    except:
+        exit_app("Error generating zipfile.", status_code=1)
+        
     return zip_filename
 
 if __name__ == '__main__':
-    inputs = get_dome_inputs()
-    inputFile = inputs["inputFile"]
-    material = inputs["material"]
-    coatings = inputs["coatings"]
-    
-    filename = "inputFile.stp"
-    download_stp_file(inputFile, filename)
-    
-    metadata = get_metadata(filename, material, coatings)
-    
-    shape = import_step(filename)
-    geometry = get_geometry(shape, material, metadata["unit"])
-    
-    xml = generate_xml(metadata, geometry)
-    
-    snapshots = generate_snapshots(shape)
-    
-    zip_filename = generate_zip(xml, filename, snapshots)
-    
-    zip_url = upload_zip(zip_filename)
-    
-    outfile = open('out.txt', 'w')
-    outfile.write("fileOutput=" + zip_url)
-    outfile.close()
+    try:
+        inputFile, material, coatings = get_tdp_inputs()
+        
+        filename = "inputFile.stp"
+        download_stp_file(inputFile, filename)
+        
+        metadata = get_metadata(filename, material, coatings)
+        
+        shape = import_step(filename)
+        geometry = get_geometry(shape, material, metadata["unit"])
+        
+        xml = generate_xml(metadata, geometry)
+        
+        snapshots = generate_snapshots(shape)
+        
+        zip_filename = generate_zip(xml, filename, snapshots)
+        
+        zip_url = upload_zip(zip_filename)
+        
+        exit_app(zip_url)
+    except:
+        exit_app("Unknown error.", status_code=1)
