@@ -12,19 +12,16 @@ import zipfile
 import os
 import urllib
 import json
-import aocxchange.step
 import xml.etree.cElementTree as ET
 from boto.s3.connection import S3Connection
 from boto.s3.key import Key
-from PyQt5 import QtWidgets
-from PIL import Image
 from OCC.Bnd import Bnd_Box
-from OCC.Display.OCCViewer import Viewer3d
 from OCC.BRepBndLib import brepbndlib_Add
 from OCC.GProp import GProp_GProps
 from OCC.BRepGProp import (brepgprop_LinearProperties,
                            brepgprop_SurfaceProperties,
                            brepgprop_VolumeProperties)
+from tdpUtility import import_step, FILENAME, SNAPSHOTS_FILE
 
 TOLERANCE = 1e-6
 
@@ -41,8 +38,6 @@ UNIT_FACTOR = {
     "cm": .01,
     "mm": .001
 }
-
-VIEWS = ["front", "rear", "top", "bottom", "left", "right", "iso"]
 
 def exit_app(outtext, status_code=0):
     outfile = open('out.txt', 'w')
@@ -278,17 +273,17 @@ def get_metadata(filename, material, coatings):
     
     return metadata
     
-def import_step(filename):
-    print "Importing shapes from STP file..."
-    
-    try:
-        my_importer = aocxchange.step.StepImporter(filename)
-        assert(len(my_importer.shapes))
-        print str(len(my_importer.shapes)) + " shapes loaded..."
-    except:
-        sys.exit_app("Error importing shapes from STP file.", status_code=1)
-        
-    return my_importer.shapes[0]
+# def import_step(filename):
+#     print "Importing shapes from STP file..."
+#     
+#     try:
+#         my_importer = aocxchange.step.StepImporter(filename)
+#         assert(len(my_importer.shapes))
+#         print str(len(my_importer.shapes)) + " shapes loaded..."
+#     except:
+#         exit_app("Error importing shapes from STP file.", status_code=1)
+#         
+#     return my_importer.shapes[0]
     
 def get_geometry(shape, material, unit="units"):
     print "Calculating geometry..."
@@ -337,41 +332,60 @@ def generate_xml(metadata, geometry):
         
     return mBOM
 
-def generate_snapshots(shape):
-    print "Generating snapshots..."
+# def generate_snapshots(shape):
+#     print "Generating snapshots..."
+#     
+#     try:
+#         app = QtWidgets.QApplication(sys.argv)
+#         widget = QtWidgets.QWidget()
+#         widget.resize(1000,1000)
+#         view = Viewer3d(int(widget.winId()))
+#         view.Create()
+#         view.SetModeShaded()
+#         view.DisplayShape(shape, update=True)
+#         
+#         VIEW_FUNC = {
+#             "front": view.View_Front,
+#             "rear": view.View_Rear,
+#             "top": view.View_Top,
+#             "bottom": view.View_Bottom,
+#             "left": view.View_Left,
+#             "right": view.View_Right,
+#             "iso": view.View_Iso
+#         }
+#         
+#         snapshots = []
+#         
+#         for view_type in VIEWS:
+#             VIEW_FUNC[view_type]()
+#             view.ExportToImage('capture.ppm')
+#             im = Image.open('capture.ppm')
+#             snapshot = view_type + '_capture.png'
+#             im.save(snapshot)
+#             snapshots.append(snapshot)
+#     except:
+#         exit_app("Error generating snapshots.", status_code=1)
+#         
+#     return snapshots
+
+def get_snapshots():
+    with open(SNAPSHOTS_FILE) as f:
+        lines = f.readlines()
     
-    try:
-        app = QtWidgets.QApplication(sys.argv)
-        widget = QtWidgets.QWidget()
-        widget.resize(1000,1000)
-        view = Viewer3d(int(widget.winId()))
-        view.Create()
-        view.SetModeShaded()
-        view.DisplayShape(shape, update=True)
-        
-        VIEW_FUNC = {
-            "front": view.View_Front,
-            "rear": view.View_Rear,
-            "top": view.View_Top,
-            "bottom": view.View_Bottom,
-            "left": view.View_Left,
-            "right": view.View_Right,
-            "iso": view.View_Iso
-        }
-        
-        snapshots = []
-        
-        for view_type in VIEWS:
-            VIEW_FUNC[view_type]()
-            view.ExportToImage('capture.ppm')
-            im = Image.open('capture.ppm')
-            snapshot = view_type + '_capture.png'
-            im.save(snapshot)
-            snapshots.append(snapshot)
-    except:
-        exit_app("Error generating snapshots.", status_code=1)
+    snapshots = []    
+    for snapshot in lines:
+        snapshots.append(snapshot.rstrip('\n'))
         
     return snapshots
+
+def generate_snapshots():
+    try:
+        #return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' /home/dmcAdmin/anaconda2/bin/python generateSnapshots.py")
+        return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' python generateSnapshots.py")
+        assert(not return_val)
+        return get_snapshots()
+    except:
+        exit_app("Error generating snapshots.", status_code=1)
 
 def generate_zip(xml, filename, snapshots):
     print "Generating zipfile..."
@@ -400,17 +414,21 @@ if __name__ == '__main__':
     try:
         inputFile, material, coatings = get_tdp_inputs()
         
-        filename = "inputFile.stp"
+        filename = FILENAME
         download_stp_file(inputFile, filename)
         
         metadata = get_metadata(filename, material, coatings)
         
-        shape = import_step(filename)
+        try:
+            shape = import_step(filename)
+        except:
+            exit_app("Error importing shapes from STP file.", status_code=1)
+            
         geometry = get_geometry(shape, material, metadata["unit"])
         
         xml = generate_xml(metadata, geometry)
         
-        snapshots = generate_snapshots(shape)
+        snapshots = generate_snapshots()
         
         zip_filename = generate_zip(xml, filename, snapshots)
         
