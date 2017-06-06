@@ -46,16 +46,15 @@ def write_to_file(snapshots):
     outfile = open(SNAPSHOTS_FILE, 'w')
     
     for snapshot in snapshots:
-        outfile.write(snapshot)
+        outfile.write(snapshot + '\n')
         
     outfile.close()
-    return
 
 if __name__ == '__main__':
     try:
         shape = import_step(FILENAME)
         snapshots = generate_snapshots(shape)
         write_to_file(snapshots)
-        #sys.exit(0)
+        sys.exit(0)
     except:
         sys.exit(1)

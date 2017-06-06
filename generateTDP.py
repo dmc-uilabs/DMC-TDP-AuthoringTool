@@ -369,21 +369,19 @@ def generate_xml(metadata, geometry):
 #     return snapshots
 
 def get_snapshots():
-    with open(SNAPSHOTS_FILE) as f:
-        lines = f.readlines()
-    
-    snapshots = []    
-    for snapshot in lines:
-        snapshots.append(snapshot.rstrip('\n'))
-        
-    return snapshots
-
-def generate_snapshots():
     try:
-        #return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' /home/dmcAdmin/anaconda2/bin/python generateSnapshots.py")
+        #os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' /home/dmcAdmin/anaconda2/bin/python generateSnapshots.py")
         return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' python generateSnapshots.py")
         assert(not return_val)
-        return get_snapshots()
+        
+        with open(SNAPSHOTS_FILE) as f:
+            lines = f.readlines()
+        
+        snapshots = []    
+        for snapshot in lines:
+            snapshots.append(snapshot.rstrip('\n'))
+            
+        return snapshots
     except:
         exit_app("Error generating snapshots.", status_code=1)
 
@@ -428,12 +426,14 @@ if __name__ == '__main__':
         
         xml = generate_xml(metadata, geometry)
         
-        snapshots = generate_snapshots()
+        snapshots = get_snapshots()
         
         zip_filename = generate_zip(xml, filename, snapshots)
         
         zip_url = upload_zip(zip_filename)
         
         exit_app(zip_url)
+    except SystemExit as e:
+        sys.exit(0)
     except:
         exit_app("Unknown error.", status_code=1)
