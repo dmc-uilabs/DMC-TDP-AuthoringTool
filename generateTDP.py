@@ -103,11 +103,11 @@ class stp_header_parser():
 
             while True:
 
-                line = filehandle.readline().strip()
-                #if line.startswith(str_startswith):
-
+                line = filehandle.readline()
                 if not line:
                     break
+
+                line = line.strip()
 
                 if str_startswith in line:
                     line_extracted = ''
@@ -172,16 +172,13 @@ class stp_header_parser():
                     if is_debug:
                         print('>>> Header End Mark Found <<<')
 
-            while True:
-                line = line_extract(f, 'LENGTH_UNIT', ';')
-                if not line:
-                    break
-                units = line.split('SI_UNIT')
-                if(len(units) == 2):
-                    units = units[1].split('.')[1:4:2]
-                    units = get_unit_abbr(units)
-                    infos_value.append(units)
-                    break
+        with open(stp_filename, 'r') as f:
+            line = line_extract(f, 'LENGTH_UNIT', ';')
+            units = line.split('SI_UNIT')
+            if(len(units) == 2):
+                units = units[1].split('.')[1:4:2]
+                units = get_unit_abbr(units)
+                infos_value.append(units)
 
 
         infos_dict = {
