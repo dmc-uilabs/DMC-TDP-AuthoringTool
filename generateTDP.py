@@ -99,26 +99,28 @@ class stp_header_parser():
             comment_pattern = re.compile('/\*.*?\*/')
             return comment_pattern.sub('', line)
 
-        def line_extract(filehandle=None, str_startswith='', str_endswith=''):
-
-            while True:
-
-                line = filehandle.readline()
-                if not line:
-                    break
-
+        def line_extract(filehandle=None, str_startswith='', str_endswith='', str_contains=''):
+            for line in filehandle:
                 line = line.strip()
-
                 if str_startswith in line:
-                    line_extracted = ''
-                    while True:
+                    line_extracted = line
+                    if line.endswith(str_endswith):
+                        if str_contains in line_extracted:
+                            return line_extracted
+                        else:
+                            continue
+                    for line in filehandle:
+                        line = line.strip()
                         line_extracted += line
                         if line.endswith(str_endswith):
-                            break
-                        else:
-                            line = filehandle.readline().strip()
-
-                    return line_extracted
+                            if str_contains in line_extracted:
+                                return line_extracted
+                            else:
+                                break
+                    else:
+                        return ""
+            else:
+                return ""
 
         infos_name = [
             'ISO Standard',
@@ -172,14 +174,14 @@ class stp_header_parser():
                     if is_debug:
                         print('>>> Header End Mark Found <<<')
 
-        with open(stp_filename, 'r') as f:
-            line = line_extract(f, 'LENGTH_UNIT', ';')
+            line = line_extract(f, 'LENGTH_UNIT', ';', 'SI_UNIT')
             units = line.split('SI_UNIT')
             if(len(units) == 2):
                 units = units[1].split('.')[1:4:2]
                 units = get_unit_abbr(units)
                 infos_value.append(units)
-
+            else:
+                infos_value.append("units")
 
         infos_dict = {
             index: list(parameter) for (
