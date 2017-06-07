@@ -8,7 +8,7 @@ VIEWS = ["front", "rear", "top", "bottom", "left", "right", "iso"]
 
 def generate_snapshots(shape):
     print "Generating snapshots..."
-    
+
     try:
         app = QtWidgets.QApplication(sys.argv)
         widget = QtWidgets.QWidget()
@@ -17,7 +17,7 @@ def generate_snapshots(shape):
         view.Create()
         view.SetModeShaded()
         view.DisplayShape(shape, update=True)
-        
+
         VIEW_FUNC = {
             "front": view.View_Front,
             "rear": view.View_Rear,
@@ -27,9 +27,9 @@ def generate_snapshots(shape):
             "right": view.View_Right,
             "iso": view.View_Iso
         }
-        
+
         snapshots = []
-        
+
         for view_type in VIEWS:
             VIEW_FUNC[view_type]()
             view.ExportToImage('capture.ppm')
@@ -39,15 +39,15 @@ def generate_snapshots(shape):
             snapshots.append(snapshot)
     except:
         sys.exit(1)
-        
+
     return snapshots
-    
+
 def write_to_file(snapshots):
     outfile = open(SNAPSHOTS_FILE, 'w')
-    
+
     for snapshot in snapshots:
         outfile.write(snapshot + '\n')
-        
+
     outfile.close()
 
 if __name__ == '__main__':
@@ -55,6 +55,6 @@ if __name__ == '__main__':
         shape = import_step(FILENAME)
         snapshots = generate_snapshots(shape)
         write_to_file(snapshots)
-        sys.exit(0)
     except:
         sys.exit(1)
+    sys.exit(0)

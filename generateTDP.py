@@ -91,11 +91,11 @@ class stp_header_parser():
             prefix = {'MILLI': 'm'}
             unit = {'METRE': 'm'}
             return prefix[units[0]]+unit[units[1]]
-            
+
         def remove_comments(line):
             comment_pattern = re.compile('/\*.*?\*/')
             return comment_pattern.sub('', line)
-        
+
         def line_extract(filehandle=None, str_startswith='', str_endswith=''):
 
             while True:
@@ -133,7 +133,7 @@ class stp_header_parser():
         len_infos_name = len(infos_name)
 
         with open(stp_filename, 'r') as f:
-            
+
             line = line_extract(f, 'ISO-', ';')
 
             if line:
@@ -164,7 +164,7 @@ class stp_header_parser():
                 if line_extract(f, 'ENDSEC', ';'):
                     if is_debug:
                         print('>>> Header End Mark Found <<<')
-            
+
             while True:
                 line = line_extract(f, 'LENGTH_UNIT', ';')
                 units = line.split('SI_UNIT')
@@ -173,7 +173,7 @@ class stp_header_parser():
                     units = get_unit_abbr(units)
                     infos_value.append(units)
                     break
-                
+
 
         infos_dict = {
             index: list(parameter) for (
@@ -198,17 +198,17 @@ def get_dome_inputs():
         key = kv.pop(0).strip()
         value = "=".join(kv).strip()
         inputs[key] = value
-        
+
     return inputs
 
 def validate_inputs(inputFile, material, coatings):
     assert(inputFile)
     assert(material in DENSITIES)
     assert(coatings)
-        
+
 def get_tdp_inputs():
     print "Getting TDP inputs..."
-    
+
     try:
         inputs = get_dome_inputs()
         inputFile = inputs["inputFile"]
@@ -217,13 +217,13 @@ def get_tdp_inputs():
     except:
         exit_app("Error parsing inputs.", status_code=1)
         sys.exit()
-    
+
     try:
         validate_inputs(inputFile, material, coatings)
     except:
         exit_app("One or more of the inputs is not valid.", status_code=1)
         sys.exit()
-    
+
     return inputFile, material, coatings
 
 def download_stp_file(url, filename):
@@ -232,10 +232,10 @@ def download_stp_file(url, filename):
         urllib.urlretrieve(url, filename)
     except:
         exit_app("Unable to download STP file.", status_code=1)
-    
+
 def upload_zip(zipfile):
     print "Uploading zipfile..."
-    
+
     try:
         timestamp = int(time.time())
 
@@ -243,7 +243,7 @@ def upload_zip(zipfile):
             aws = json.load(json_data)
             access_key = aws['accessKeyId']
             secret_key = aws['secretAccessKey']
-            
+
         conn = S3Connection(access_key, secret_key)
         bucket = conn.get_bucket('psubucket01')
 
@@ -263,37 +263,37 @@ def upload_zip(zipfile):
 
 def get_metadata(filename, material, coatings):
     print "Gathering metatdata from STP file..."
-    
+
     try:
         header = stp_header_parser()
         header = header.stp_header_parser(stp_filename=filename)
         metadata = {'name': header[3][1], 'material': material, 'coatings': coatings, 'unit': header[11][1]}
     except:
         exit_app("Error gathering metadata from STP file.", status_code=1)
-    
+
     return metadata
-    
+
 # def import_step(filename):
 #     print "Importing shapes from STP file..."
-#     
+#
 #     try:
 #         my_importer = aocxchange.step.StepImporter(filename)
 #         assert(len(my_importer.shapes))
 #         print str(len(my_importer.shapes)) + " shapes loaded..."
 #     except:
 #         exit_app("Error importing shapes from STP file.", status_code=1)
-#         
+#
 #     return my_importer.shapes[0]
-    
+
 def get_geometry(shape, material, unit="units"):
     print "Calculating geometry..."
-    
+
     try:
         boundingbox_points = get_boundingbox(shape)
         length = boundingbox_points[3] - boundingbox_points[0]
         height = boundingbox_points[5] - boundingbox_points[2]
         width = boundingbox_points[4] - boundingbox_points[1]
-    
+
         gprop = GpropsFromShape(shape)
         volume = gprop.volume().Mass()
         density = DENSITIES[material]
@@ -301,16 +301,16 @@ def get_geometry(shape, material, unit="units"):
         surface_area = gprop.surface().Mass()
     except:
         exit_app("Error calculating geometry.", status_code=1)
-    
+
     return {'length': length, 'height': height, 'width': width, 'volume': volume, 'mass': mass, 'surface_area': surface_area}
-   
+
 def generate_xml(metadata, geometry):
     print "Generating xml..."
-    
+
     try:
         part_id = str(uuid.uuid4())
         instance_id = str(uuid.uuid4())
-        
+
         mBOM = ET.Element("mBOM", version="2.0")
         parts = ET.SubElement(mBOM, "parts")
         part = ET.SubElement(parts, "part", id=part_id)
@@ -329,12 +329,12 @@ def generate_xml(metadata, geometry):
         assemblies = ET.SubElement(mBOM, "assemblies")
     except:
         exit_app("Error generating xml.", status_code=1)
-        
+
     return mBOM
 
 # def generate_snapshots(shape):
 #     print "Generating snapshots..."
-#     
+#
 #     try:
 #         app = QtWidgets.QApplication(sys.argv)
 #         widget = QtWidgets.QWidget()
@@ -343,7 +343,7 @@ def generate_xml(metadata, geometry):
 #         view.Create()
 #         view.SetModeShaded()
 #         view.DisplayShape(shape, update=True)
-#         
+#
 #         VIEW_FUNC = {
 #             "front": view.View_Front,
 #             "rear": view.View_Rear,
@@ -353,9 +353,9 @@ def generate_xml(metadata, geometry):
 #             "right": view.View_Right,
 #             "iso": view.View_Iso
 #         }
-#         
+#
 #         snapshots = []
-#         
+#
 #         for view_type in VIEWS:
 #             VIEW_FUNC[view_type]()
 #             view.ExportToImage('capture.ppm')
@@ -365,73 +365,74 @@ def generate_xml(metadata, geometry):
 #             snapshots.append(snapshot)
 #     except:
 #         exit_app("Error generating snapshots.", status_code=1)
-#         
+#
 #     return snapshots
 
 def get_snapshots():
     try:
         #os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' /home/dmcAdmin/anaconda2/bin/python generateSnapshots.py")
         return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' python generateSnapshots.py")
+        print("return val = " + str(return_val))
         assert(not return_val)
-        
+
         with open(SNAPSHOTS_FILE) as f:
             lines = f.readlines()
-        
-        snapshots = []    
+
+        snapshots = []
         for snapshot in lines:
             snapshots.append(snapshot.rstrip('\n'))
-            
+
         return snapshots
     except:
         exit_app("Error generating snapshots.", status_code=1)
 
 def generate_zip(xml, filename, snapshots):
     print "Generating zipfile..."
-    
+
     try:
         file_id = int(time.time())
         zip_filename = 'TDP_' + str(file_id) + '.zip'
-        
+
         tree = ET.ElementTree(xml)
         xml_file = "TDP_" + str(file_id) + ".xml"
         tree.write(xml_file)
-        
+
         with zipfile.ZipFile(zip_filename, 'w') as myzip:
             myzip.write(filename)
             myzip.write(xml_file)
             for snapshot in snapshots:
                 myzip.write(snapshot)
-            
+
         myzip.close()
     except:
         exit_app("Error generating zipfile.", status_code=1)
-        
+
     return zip_filename
 
 if __name__ == '__main__':
     try:
         inputFile, material, coatings = get_tdp_inputs()
-        
+
         filename = FILENAME
         download_stp_file(inputFile, filename)
-        
+
         metadata = get_metadata(filename, material, coatings)
-        
+
         try:
             shape = import_step(filename)
         except:
             exit_app("Error importing shapes from STP file.", status_code=1)
-            
+
         geometry = get_geometry(shape, material, metadata["unit"])
-        
+
         xml = generate_xml(metadata, geometry)
-        
+
         snapshots = get_snapshots()
-        
+
         zip_filename = generate_zip(xml, filename, snapshots)
-        
+
         zip_url = upload_zip(zip_filename)
-        
+
         exit_app(zip_url)
     except SystemExit as e:
         sys.exit(0)
