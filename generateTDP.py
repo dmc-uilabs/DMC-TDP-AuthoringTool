@@ -23,6 +23,8 @@ from OCC.BRepGProp import (brepgprop_LinearProperties,
                            brepgprop_VolumeProperties)
 from tdpUtility import import_step, FILENAME, SNAPSHOTS_FILE
 
+OUTPUT_TEMPLATE = "<div class=\"project-run-services padding-10\" ng-if=\"!runHistory\" layout=\"column\">          <style>            #custom-dome-UI {             margin-top: -30px;           }          </style>            <div id=\"custom-dome-UI\">             <div layout=\"row\" layout-wrap style=\"padding: 0px 30px\">               <h2>Technical Data Package Created Successfully:</h2>               <p><a href=\"{{outputFile}}\">{{outputFile}}</a></p>             </div>           </div>        </div>   <script> </script>"
+
 TOLERANCE = 1e-6
 
 # Unit: kg/m^3
@@ -42,6 +44,7 @@ UNIT_FACTOR = {
 def exit_app(outtext, status_code=0):
     outfile = open('out.txt', 'w')
     outfile.write("outputFile=" + outtext)
+    outfile.write("\noutputTemplate=" + OUTPUT_TEMPLATE)
     outfile.close()
     sys.exit(0)
 
@@ -102,6 +105,10 @@ class stp_header_parser():
 
                 line = filehandle.readline().strip()
                 #if line.startswith(str_startswith):
+
+                if not line:
+                    break
+
                 if str_startswith in line:
                     line_extracted = ''
                     while True:
@@ -167,6 +174,8 @@ class stp_header_parser():
 
             while True:
                 line = line_extract(f, 'LENGTH_UNIT', ';')
+                if not line:
+                    break
                 units = line.split('SI_UNIT')
                 if(len(units) == 2):
                     units = units[1].split('.')[1:4:2]
@@ -370,8 +379,8 @@ def generate_xml(metadata, geometry):
 
 def get_snapshots():
     try:
-        #os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' /home/dmcAdmin/anaconda2/bin/python generateSnapshots.py")
-        return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' python generateSnapshots.py")
+        return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' /home/dmcAdmin/anaconda2/bin/python generateSnapshots.py")
+        #return_val = os.system("xvfb-run -a --server-args='-screen 0 1360x768x24' python generateSnapshots.py")
         print("return val = " + str(return_val))
         assert(not return_val)
 
