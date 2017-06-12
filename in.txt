@@ -1,3 +1,3 @@
-filename=filename
-material=materialA
+inputFile=
+material=Steel
 coatings=coatingB
